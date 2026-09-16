@@ -24,8 +24,6 @@ X sufficient for Y  <=>  not-Y necessary for not-X
 For example, `High X -> High Y` requires the lower-right corner (High X, Low
 Y) to be empty. It is equivalent to Low X being necessary for Low Y.
 
-Source and issue tracker:
-<https://github.com/youngchanresearcher/SCAtools>
 
 ## Installation
 
