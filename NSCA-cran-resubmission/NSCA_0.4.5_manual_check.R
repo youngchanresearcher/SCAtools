@@ -10,9 +10,16 @@
 #   第 6 部分  （選用）R CMD check --as-cran。
 #
 # 使用方式：
-#   1. 把下面兩個路徑改成你電腦上 tarball 的位置。
-#   2. 在 R 或 RStudio 執行：source("NSCA_0.4.5_manual_check.R", encoding = "UTF-8")
+#   1. 把 NSCA_0.4.5.tar.gz（和 NSCA_0.4.4.tar.gz）放在這個腳本旁邊、
+#      桌面，或留在「下載」資料夾。
+#   2. 在 RStudio 開啟這個檔案按 Source，或在 R 執行：
+#        source("完整路徑/NSCA_0.4.5_manual_check.R", encoding = "UTF-8")
 #   3. 最後會印出一張總表，每一項是 PASS 或 FAIL。
+#
+# 腳本會在「工作目錄」「腳本所在資料夾」「桌面（含 OneDrive 桌面）」
+# 「下載資料夾」裡找 tarball，檔名前後
+# 多了字（例如瀏覽器存成 "NSCA_0.4.5 (1).tar.gz"）也找得到。都找不到時，
+# 互動模式會跳出視窗讓你選檔案。
 #
 # 兩個版本不能在同一個 R session 裡同時載入，所以每項檢查都在獨立的子行程
 # (Rscript) 裡執行：一次用 0.4.4、一次用 0.4.5。
@@ -20,11 +27,15 @@
 
 ## ---- 設定 -------------------------------------------------------------------
 
-# 0.4.5：這次要上傳的版本（必填）
-NEW_TARBALL <- "NSCA_0.4.5.tar.gz"
+# 留 NA 表示自動尋找；也可以直接填完整路徑，例如
+#   NEW_TARBALL <- "C:/Users/furfa/OneDrive/Desktop/NSCA_0.4.5.tar.gz"
+# Windows 路徑請用 / 或 \\，不要用單一個 \。
 
-# 0.4.4：你之前上傳、被 CRAN 退件的版本（選填；找不到就只檢查 0.4.5）
-OLD_TARBALL <- "NSCA_0.4.4.tar.gz"
+# 0.4.5：這次要上傳的版本（必要）
+NEW_TARBALL <- NA
+
+# 0.4.4：你之前上傳、被 CRAN 退件的版本（選用；找不到就只檢查 0.4.5）
+OLD_TARBALL <- NA
 
 # 第 6 部分要不要跑 R CMD check --as-cran（約 2–3 分鐘）
 RUN_CRAN_CHECK <- TRUE
@@ -35,10 +46,80 @@ CHECK_ARGS <- c("--as-cran", "--no-manual")
 
 ## ---- 準備 -------------------------------------------------------------------
 
-stopifnot(file.exists(NEW_TARBALL))
-has_old <- file.exists(OLD_TARBALL)
-if (!has_old) {
-  message("找不到 ", OLD_TARBALL, "，只檢查 0.4.5（前後比較會略過）。")
+work <- file.path(tempdir(), "nsca_manual_check")
+dir.create(work, showWarnings = FALSE, recursive = TRUE)
+
+# 這個腳本所在的資料夾：source() 時可取得；RStudio 另外再試 rstudioapi。
+script_dir <- tryCatch(
+  dirname(normalizePath(sys.frame(1)$ofile)),
+  error = function(e) NA_character_
+)
+if (is.na(script_dir) && requireNamespace("rstudioapi", quietly = TRUE)) {
+  script_dir <- tryCatch({
+    path <- rstudioapi::getSourceEditorContext()$path
+    if (nzchar(path)) dirname(normalizePath(path)) else NA_character_
+  }, error = function(e) NA_character_)
+}
+home <- Sys.getenv(if (.Platform$OS.type == "windows") "USERPROFILE" else "HOME")
+# Windows 開了 OneDrive 備份時，桌面實際上在 OneDrive 底下
+onedrive <- Sys.getenv(c("OneDrive", "OneDriveConsumer", "OneDriveCommercial"))
+onedrive <- unique(c(onedrive[nzchar(onedrive)], file.path(home, "OneDrive")))
+search_dirs <- unique(stats::na.omit(c(
+  getwd(), script_dir,
+  file.path(home, c("Desktop", "桌面", "Downloads", "下載")),
+  file.path(rep(onedrive, each = 2L), c("Desktop", "桌面"))
+)))
+search_dirs <- search_dirs[dir.exists(search_dirs)]
+
+locate <- function(given, version, required) {
+  if (!is.na(given)) {
+    if (!file.exists(given)) {
+      stop("指定的檔案不存在：", given, call. = FALSE)
+    }
+    return(normalizePath(given))
+  }
+  # 允許前後多出的字：c6456c62-NSCA_0.4.4.tar.gz、NSCA_0.4.5 (1).tar.gz
+  pattern <- paste0("NSCA_", gsub(".", "\\.", version, fixed = TRUE),
+                    ".*\\.tar\\.gz$")
+  found <- unlist(lapply(search_dirs, list.files, pattern = pattern,
+                         full.names = TRUE))
+  if (length(found) > 0L) {
+    # 同名多份時用最新的那份
+    newest <- found[which.max(file.mtime(found))]
+    return(normalizePath(newest))
+  }
+  if (interactive()) {
+    message("找不到 NSCA_", version, ".tar.gz，請在視窗中選擇它",
+            if (required) "。" else "（不需要的話按取消）。")
+    chosen <- tryCatch(file.choose(), error = function(e) NA_character_)
+    if (!is.na(chosen)) {
+      return(normalizePath(chosen))
+    }
+  }
+  if (required) {
+    stop(
+      "找不到 NSCA_", version, ".tar.gz。已搜尋：\n  ",
+      paste(search_dirs, collapse = "\n  "),
+      "\n請把檔案放進其中一個資料夾，或在腳本開頭把 NEW_TARBALL 設成完整路徑。",
+      call. = FALSE
+    )
+  }
+  NA_character_
+}
+
+new_found <- locate(NEW_TARBALL, "0.4.5", required = TRUE)
+old_found <- locate(OLD_TARBALL, "0.4.4", required = FALSE)
+has_old <- !is.na(old_found)
+cat("0.4.5 使用：", new_found, "\n")
+cat("0.4.4 使用：", if (has_old) old_found else "（找不到，前後比較會略過）", "\n")
+
+# 複製成標準檔名再使用：R CMD check 以檔名判斷套件名稱，
+# "NSCA_0.4.5 (1).tar.gz" 這類檔名會讓它失敗。
+NEW_TARBALL <- file.path(work, "NSCA_0.4.5.tar.gz")
+file.copy(new_found, NEW_TARBALL, overwrite = TRUE)
+if (has_old) {
+  OLD_TARBALL <- file.path(work, "NSCA_0.4.4.tar.gz")
+  file.copy(old_found, OLD_TARBALL, overwrite = TRUE)
 }
 
 needed <- c("NCA", "SCAtools", "ggplot2", "testthat")
@@ -48,8 +129,6 @@ if (length(missing_pkgs) > 0L) {
   install.packages(missing_pkgs)
 }
 
-work <- file.path(tempdir(), "nsca_manual_check")
-dir.create(work, showWarnings = FALSE, recursive = TRUE)
 rscript <- file.path(R.home("bin"), "Rscript")
 
 results <- data.frame(item = character(), result = character(),
