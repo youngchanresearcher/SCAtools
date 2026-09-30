@@ -8,6 +8,7 @@
 | `NSCA/` | tarball 解開後的完整原始碼，可直接在 GitHub 上逐檔瀏覽 |
 | `NSCA_0.4.4_to_0.4.5_code.diff` | **審閱用**：與你上傳的 0.4.4 相比的程式碼差異（不含 `man/`），約 300 行 |
 | `NSCA_0.4.4_to_0.4.5.diff` | 完整差異，含 roxygen 重新產生的 `man/*.Rd` |
+| `NSCA_0.4.5_manual_check.R` | **手動檢查腳本**：在你的電腦上逐項驗證以上所有修改，最後列出 PASS／FAIL 總表 |
 
 ## 背景：CRAN 為甚麼退件
 
