@@ -1,0 +1,759 @@
+diff -ruN --strip-trailing-cr a/NSCA/DESCRIPTION b/NSCA/DESCRIPTION
+--- a/NSCA/DESCRIPTION	2026-09-30 15:27:37.127316039 +0000
++++ b/NSCA/DESCRIPTION	2026-09-30 15:27:37.131722257 +0000
+@@ -2,7 +2,7 @@
+ Type: Package
+ Title: Necessary and Sufficient Condition Analysis
+ Version: 0.4.4
+-Date: 2026-09-22
++Date: 2026-09-30
+ Authors@R: c(
+     person("Young", "Chan", email = "youngchanresearcher@gmail.com",
+            role = c("aut", "cre"))
+@@ -39,6 +39,6 @@
+ Roxygen: list(markdown = TRUE)
+ RoxygenNote: 7.3.2
+ NeedsCompilation: no
+-Packaged: 2026-09-22 02:10:42 UTC; furfa
++Packaged: 2026-09-30 15:25:52 UTC; root
+ Author: Young Chan [aut, cre]
+ Maintainer: Young Chan <youngchanresearcher@gmail.com>
+diff -ruN --strip-trailing-cr a/NSCA/NEWS.md b/NSCA/NEWS.md
+--- a/NSCA/NEWS.md	2026-09-30 15:27:37.127384971 +0000
++++ b/NSCA/NEWS.md	2026-09-30 15:27:37.131830481 +0000
+@@ -1,5 +1,22 @@
+ # NSCA 0.4.4
+ 
++## Examples run as written
++
++CRAN review asked that `\dontrun{}` be kept for code that genuinely cannot
++run. The one example that used it, `nsca_extract()`, relied on a `fit` it never
++created; it now builds its own model and runs in well under a second.
++
++`nsca()`, `nsca_table()`, `nsca_results()` with its `print()` and `summary()`
++methods, `nsca_thresholds()` and `nsca_plot()` with its `plot()` method had no
++examples at all and now have short runnable ones. The `nsca()` example sets
++`test.rep = 50`; the default of 1000 is kept for real use but takes around ten
++seconds, over CRAN's per-example budget.
++
++`nsca_reference()`'s example and its list of returned columns had been added
++to the `.Rd` file by hand and were missing from the roxygen source, so the next
++`roxygen2::roxygenise()` would have dropped them. They are now in the source,
++and every help page is regenerated from it.
++
+ ## Authorship and maintainer
+ 
+ `Authors@R` named a placeholder, `NSCA Contributors <maintainer@example.org>`,
+diff -ruN --strip-trailing-cr a/NSCA/R/analysis.R b/NSCA/R/analysis.R
+--- a/NSCA/R/analysis.R	2026-09-30 15:27:37.127452088 +0000
++++ b/NSCA/R/analysis.R	2026-09-30 15:27:37.132023006 +0000
+@@ -505,6 +505,12 @@
+ #' @return An object of class `nsca_result`.
+ #' @seealso [nsca_analysis()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' # test.rep = 50 keeps the example fast; use the default 1000 in practice.
++#' nsca(dat, "X", "Y", test.rep = 50)
+ nsca <- function(data, x, y, direction = "HH", ceilings = "ce_fdh",
+                  reference = NULL, test.rep = 1000) {
+   nsca_analysis(
+diff -ruN --strip-trailing-cr a/NSCA/R/plots.R b/NSCA/R/plots.R
+--- a/NSCA/R/plots.R	2026-09-30 15:27:37.127691230 +0000
++++ b/NSCA/R/plots.R	2026-09-30 15:27:37.132465879 +0000
+@@ -213,6 +213,13 @@
+ #' @return A `ggplot` for one condition, or a named list of plots.
+ #' @seealso [nsca_analysis()], [nsca_table()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++#' nsca_plot(fit)
++#' plot(fit)
+ nsca_plot <- function(model, x = NULL, ceilings = NULL, shade = TRUE,
+                       annotate = TRUE) {
+   metadata <- .nsca_metadata(model)
+diff -ruN --strip-trailing-cr a/NSCA/R/results.R b/NSCA/R/results.R
+--- a/NSCA/R/results.R	2026-09-30 15:27:37.127734712 +0000
++++ b/NSCA/R/results.R	2026-09-30 15:27:37.132542054 +0000
+@@ -151,9 +151,17 @@
+ #'
+ #' @param model An object returned by [nsca_analysis()].
+ #' @param x Optional condition names or positions. All conditions by default.
+-#' @return A data frame with one row per condition.
++#' @return A data frame with one row per condition: `condition`, `outcome`,
++#'   `line`, `line_type`, `observations`, `intercept`, `slope`, `r_squared`
++#'   and `drawn`.
+ #' @seealso [nsca_analysis()], [nsca_table()], [nsca_terms()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh", reference = "ols")
++#' nsca_reference(fit)
+ nsca_reference <- function(model, x = NULL) {
+   metadata <- .nsca_metadata(model)
+   conditions <- .nsca_select_conditions(model, x)
+@@ -532,6 +540,12 @@
+ #' @seealso [nsca_results()], [nsca_joint()], [nsca_extract()],
+ #'   [nsca_legacy_names()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++#' nsca_table(fit)
+ nsca_table <- function(model, legacy = FALSE) {
+   metadata <- .nsca_metadata(model)
+   shared <- metadata$shared
+@@ -798,6 +812,15 @@
+ #'   summary object.
+ #' @seealso [nsca_table()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++#' layers <- nsca_results(fit)
++#' names(layers)
++#' fit
++#' summary(fit)
+ nsca_results <- function(model) {
+   .nsca_metadata(model)
+   list(
+@@ -819,10 +842,12 @@
+ #' @seealso [nsca_table()], [nsca_legacy_names()]
+ #' @export
+ #' @examples
+-#' \dontrun{
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
+ #' nsca_extract(fit, param = "weakest_effect")
+ #' nsca_extract(fit, param = "nec:Ceiling accuracy")
+-#' }
+ nsca_extract <- function(model, x = NULL, ceiling = NULL,
+                          param = "weakest_effect") {
+   metadata <- .nsca_metadata(model)
+diff -ruN --strip-trailing-cr a/NSCA/R/thresholds.R b/NSCA/R/thresholds.R
+--- a/NSCA/R/thresholds.R	2026-09-30 15:27:37.127782541 +0000
++++ b/NSCA/R/thresholds.R	2026-09-30 15:27:37.132643385 +0000
+@@ -143,6 +143,12 @@
+ #' @return A data frame with one row per condition and outcome level.
+ #' @seealso [nsca_table()], [nsca_analysis()], [nsca_legacy_names()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++#' nsca_thresholds(fit)
+ nsca_thresholds <- function(
+     model,
+     ceiling = NULL,
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca.Rd b/NSCA/man/nsca.Rd
+--- a/NSCA/man/nsca.Rd	2026-09-30 15:27:37.128184586 +0000
++++ b/NSCA/man/nsca.Rd	2026-09-30 15:27:37.133509278 +0000
+@@ -5,7 +5,12 @@
+ \title{Quick necessary and sufficient condition analysis}
+ \usage{
+ nsca(
+-  data, x, y, direction = "HH", ceilings = "ce_fdh", reference = NULL,
++  data,
++  x,
++  y,
++  direction = "HH",
++  ceilings = "ce_fdh",
++  reference = NULL,
+   test.rep = 1000
+ )
+ }
+@@ -16,7 +21,8 @@
+ 
+ \item{y}{A single outcome column.}
+ 
+-\item{direction}{Necessary-and-sufficient direction(s): \code{"HH"}, \code{"LH"}, \code{"HL"}, or
++\item{direction}{Necessary-and-sufficient direction(s): \code{"HH"}, \code{"LH"},
++\code{"HL"}, or
+ \code{"LL"}. The first letter is the condition level and the second the outcome
+ level.}
+ 
+@@ -26,15 +32,14 @@
+ instead.}
+ 
+ \item{reference}{Central-tendency lines drawn beside the two frontiers for
+-comparison, or \code{NULL} for none. \code{"ols"} is the ordinary
+-least-squares regression of the outcome on the condition, fitted to all the
+-data. It is an average-effect summary, enters no joint index, no threshold and
+-no support decision, and is reported by \code{\link{nsca_reference}}.}
++comparison, or \code{NULL} for none. \code{"ols"} is the ordinary least-squares
++regression of the outcome on the condition, fitted to all the data. It is
++an average-effect summary, enters no joint index, no threshold and no
++support decision, and is reported by \code{\link[=nsca_reference]{nsca_reference()}}.}
+ 
+ \item{test.rep}{Number of permutation resamples for the engines' own
+ component tests. Zero skips testing, and without it no joint-support verdict
+ can be reached.}
+-
+ }
+ \value{
+ An object of class \code{nsca_result}.
+@@ -42,6 +47,13 @@
+ \description{
+ A thin wrapper over \code{\link[=nsca_analysis]{nsca_analysis()}} with a permutation test attached.
+ }
++\examples{
++set.seed(1)
++x <- sort(runif(60))
++dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++# test.rep = 50 keeps the example fast; use the default 1000 in practice.
++nsca(dat, "X", "Y", test.rep = 50)
++}
+ \seealso{
+ \code{\link[=nsca_analysis]{nsca_analysis()}}
+ }
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_analysis.Rd b/NSCA/man/nsca_analysis.Rd
+--- a/NSCA/man/nsca_analysis.Rd	2026-09-30 15:27:37.128219229 +0000
++++ b/NSCA/man/nsca_analysis.Rd	2026-09-30 15:27:37.133576520 +0000
+@@ -5,13 +5,29 @@
+ \title{Necessary and sufficient condition analysis}
+ \usage{
+ nsca_analysis(
+-  data, x, y, direction = "HH", ceilings = c("ce_fdh", "cr_fdh"),
+-  reference = NULL, scope = NULL, threshold.x = "percentage.range", threshold.y =
+-  "percentage.range", convention = c("absolute", "directional"), steps =
+-  10, step.size = NULL, cutoff = 0, qr.tau = 0.95, test.rep = 0,
+-  test.p_confidence = 0.95, test.p_threshold = 0.05, relevance = NULL,
+-  shared.test.rep = 0, shared.seed = NULL, geometry.max_overlap = 0.01,
+-  geometry.max_reconstruction = 0.02, purity = FALSE
++  data,
++  x,
++  y,
++  direction = "HH",
++  ceilings = c("ce_fdh", "cr_fdh"),
++  reference = NULL,
++  scope = NULL,
++  threshold.x = "percentage.range",
++  threshold.y = "percentage.range",
++  convention = c("absolute", "directional"),
++  steps = 10,
++  step.size = NULL,
++  cutoff = 0,
++  qr.tau = 0.95,
++  test.rep = 0,
++  test.p_confidence = 0.95,
++  test.p_threshold = 0.05,
++  relevance = NULL,
++  shared.test.rep = 0,
++  shared.seed = NULL,
++  geometry.max_overlap = 0.01,
++  geometry.max_reconstruction = 0.02,
++  purity = FALSE
+ )
+ }
+ \arguments{
+@@ -21,7 +37,8 @@
+ 
+ \item{y}{A single outcome column.}
+ 
+-\item{direction}{Necessary-and-sufficient direction(s): \code{"HH"}, \code{"LH"}, \code{"HL"}, or
++\item{direction}{Necessary-and-sufficient direction(s): \code{"HH"}, \code{"LH"},
++\code{"HL"}, or
+ \code{"LL"}. The first letter is the condition level and the second the outcome
+ level.}
+ 
+@@ -31,10 +48,10 @@
+ instead.}
+ 
+ \item{reference}{Central-tendency lines drawn beside the two frontiers for
+-comparison, or \code{NULL} for none. \code{"ols"} is the ordinary
+-least-squares regression of the outcome on the condition, fitted to all the
+-data. It is an average-effect summary, enters no joint index, no threshold and
+-no support decision, and is reported by \code{\link{nsca_reference}}.}
++comparison, or \code{NULL} for none. \code{"ols"} is the ordinary least-squares
++regression of the outcome on the condition, fitted to all the data. It is
++an average-effect summary, enters no joint index, no threshold and no
++support decision, and is reported by \code{\link[=nsca_reference]{nsca_reference()}}.}
+ 
+ \item{scope}{Optional theoretical scope \code{c(xmin, xmax, ymin, ymax)}, shared
+ by both sides.}
+@@ -87,18 +104,18 @@
+ neither axis flipped, so exactly one side of an NSCA model can ever have
+ them, and which side depends on the direction. No NSCA statistic uses
+ them, and they are expensive on data with many frontier points.}
+-
+ }
+ \value{
+ An object of class \code{nsca_result}.
+ }
+ \description{
+-Estimates the two empty-space frontiers implied by a necessary-and-sufficient
+-statement and assesses them jointly. Sufficiency is delegated to
++Estimates the two empty-space frontiers implied by a
++necessary-and-sufficient statement and assesses them jointly. Sufficiency is delegated to
+ \code{\link[SCAtools:sca_analysis]{SCAtools::sca_analysis()}} and necessity to \code{\link[NCA:nca_analysis]{NCA::nca_analysis()}}, on
+ diagonally opposite corners of the same scatter plot.
+ }
+ \section{Matched estimation}{
++
+ Both sides are always estimated with the same frontier technique, the same
+ theoretical scope, the same observations and the same outcome levels. Every
+ joint index compares the two empty zones, and a comparison is only
+@@ -110,7 +127,9 @@
+ technique, which is the right way to check whether a conclusion survives
+ that choice.
+ }
++
+ \section{Degenerate scopes}{
++
+ A constant outcome is refused outright when no theoretical scope is given,
+ because it has no scope of its own and every empty area would be measured
+ against a scope of zero height. With a scope imposed the analysis runs but
+@@ -123,7 +142,9 @@
+ carrying no information. A milder warning fires when the observations span less than
+ five per cent of the declared scope on either axis.
+ }
++
+ \section{The shared permutation sequence}{
++
+ \code{shared.test.rep} replaces the engines' two separate permutation runs with
+ one sequence that drives both. Each replication shuffles the outcome once,
+ refits both engines on that same shuffled frame, and records \code{d_nec},
+@@ -135,6 +156,7 @@
+ and all four p-values are mutually consistent. It costs two engine fits per
+ replication, so it is off by default.
+ }
++
+ \examples{
+ set.seed(1)
+ x <- sort(runif(60))
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_corners.Rd b/NSCA/man/nsca_corners.Rd
+--- a/NSCA/man/nsca_corners.Rd	2026-09-30 15:27:37.128262738 +0000
++++ b/NSCA/man/nsca_corners.Rd	2026-09-30 15:27:37.133637991 +0000
+@@ -10,7 +10,6 @@
+ \item{direction}{One or more of \code{"HH"}, \code{"LH"}, \code{"HL"}, \code{"LL"}. The first
+ letter refers to the level of the condition and the second to the level of
+ the outcome.}
+-
+ }
+ \value{
+ A data frame with the necessity and sufficiency corners and the side
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_direction_map.Rd b/NSCA/man/nsca_direction_map.Rd
+--- a/NSCA/man/nsca_direction_map.Rd	2026-09-30 15:27:37.128552903 +0000
++++ b/NSCA/man/nsca_direction_map.Rd	2026-09-30 15:27:37.133707833 +0000
+@@ -7,9 +7,10 @@
+ nsca_direction_map()
+ }
+ \value{
+-A data frame describing all four necessary-and-sufficient directions. The
+-\code{biconditional} column keeps its name: it is the joint statement written
+-out, and the short logical word is the more usable column name.
++A data frame describing all four necessary-and-sufficient
++directions. The \code{biconditional} column keeps its name: it is the joint
++statement written out, and the short logical word is the more usable
++column name.
+ }
+ \description{
+ Reproduces Table 1 of the condition analysis in degree framework, which sets
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_extract.Rd b/NSCA/man/nsca_extract.Rd
+--- a/NSCA/man/nsca_extract.Rd	2026-09-30 15:27:37.128600267 +0000
++++ b/NSCA/man/nsca_extract.Rd	2026-09-30 15:27:37.133760902 +0000
+@@ -16,7 +16,6 @@
+ \item{param}{A column of \code{\link[=nsca_table]{nsca_table()}}, one of the retired names in
+ \code{\link[=nsca_legacy_names]{nsca_legacy_names()}}, or a parameter name understood by the underlying
+ engines, prefixed with \code{"nec:"} or \code{"suf:"}.}
+-
+ }
+ \value{
+ The selected value.
+@@ -25,11 +24,13 @@
+ Extract one value from an NSCA result
+ }
+ \examples{
+-\dontrun{
++set.seed(1)
++x <- sort(runif(60))
++dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
+ nsca_extract(fit, param = "weakest_effect")
+ nsca_extract(fit, param = "nec:Ceiling accuracy")
+ }
+-}
+ \seealso{
+ \code{\link[=nsca_table]{nsca_table()}}, \code{\link[=nsca_legacy_names]{nsca_legacy_names()}}
+ }
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_joint.Rd b/NSCA/man/nsca_joint.Rd
+--- a/NSCA/man/nsca_joint.Rd	2026-09-30 15:27:37.128632547 +0000
++++ b/NSCA/man/nsca_joint.Rd	2026-09-30 15:27:37.133831976 +0000
+@@ -13,10 +13,9 @@
+ \item{p}{Degree of the power mean; the degree of compensation. Defaults to
+ \code{0}, the geometric mean.}
+ 
+-\item{normalize}{Multiply by two so that the index spans \code{[0, 1]}. The
+-guarantee rests on \code{M_p <= (d_nec + d_suf)/2 <= 0.5} and therefore holds
++\item{normalize}{Multiply by two so that the index spans \verb{[0, 1]}. The
++guarantee rests on \verb{M_p <= (d_nec + d_suf)/2 <= 0.5} and therefore holds
+ only for \code{p <= 1}.}
+-
+ }
+ \value{
+ A numeric vector, \code{NA} where either component is missing or
+@@ -30,7 +29,7 @@
+ \details{
+ The index is the power mean
+ \eqn{M_p = ((d_{nec}^p + d_{suf}^p)/2)^{1/p}}, optionally doubled so that it
+-spans \code{[0, 1]}. The parameter \code{p} is the degree of compensation:
++spans \verb{[0, 1]}. The parameter \code{p} is the degree of compensation:
+ 
+ \describe{
+ \item{\code{p = -Inf}}{\code{min(d_nec, d_suf)}. Fully non-compensatory: no amount
+@@ -45,15 +44,16 @@
+ \code{balanced_joint_effect} column of \code{\link[=nsca_table]{nsca_table()}}.}
+ \item{\code{p = 1}}{The arithmetic mean, that is, half the sum. Fully
+ compensatory: one strong component alone can carry the index, so a
+-necessary-only relation scores as highly as a necessary-and-sufficient one. This is
++necessary-only relation scores as highly as a necessary-and-sufficient
++one. This is
+ why the sum is a poor conjunction summary, but it is the same family, not
+ a different kind of quantity.}
+ }
+ 
+ The geometric mean is the middle course, and describing it as a
+ non-compensatory "AND" would overstate it. What it does is penalise
+-asymmetry: at an equal sum of 0.80, \code{(0.40, 0.40)} gives 0.80 and
+-\code{(0.70, 0.10)} gives 0.529.
++asymmetry: at an equal sum of 0.80, \verb{(0.40, 0.40)} gives 0.80 and
++\verb{(0.70, 0.10)} gives 0.529.
+ 
+ No magnitude benchmarks are supplied. Conventions for a single NCA effect
+ size do not transfer, because this index has a different scale and a
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_legacy_names.Rd b/NSCA/man/nsca_legacy_names.Rd
+--- a/NSCA/man/nsca_legacy_names.Rd	2026-09-30 15:27:37.128666236 +0000
++++ b/NSCA/man/nsca_legacy_names.Rd	2026-09-30 15:27:37.133893833 +0000
+@@ -16,8 +16,8 @@
+ joint indices for what they do to a weak component rather than for a verdict.
+ }
+ \details{
+-0.4.0 goes further and adopts the vocabulary of *condition analysis in
+-degree*. The region compatible with both components is the \strong{admissible
++0.4.0 goes further and adopts the vocabulary of \emph{condition analysis in
++degree}. The region compatible with both components is the \strong{admissible
+ region}; the distance on the X scale between the two thresholds at one
+ outcome target is the \strong{necessity-sufficiency interval}; evidence for both
+ components is \strong{joint support}; and \emph{boundary} is reserved for the
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_plot.Rd b/NSCA/man/nsca_plot.Rd
+--- a/NSCA/man/nsca_plot.Rd	2026-09-30 15:27:37.128696682 +0000
++++ b/NSCA/man/nsca_plot.Rd	2026-09-30 15:27:37.133966280 +0000
+@@ -22,7 +22,6 @@
+ \item{annotate}{Label the two corners that the claim requires to be empty.}
+ 
+ \item{...}{Passed on to \code{nsca_plot()} by the \code{plot()} method.}
+-
+ }
+ \value{
+ A \code{ggplot} for one condition, or a named list of plots.
+@@ -33,6 +32,14 @@
+ be drawn at once; unlike the computation, a chart compares nothing
+ numerically, so mixing techniques here is safe and often informative.
+ }
++\examples{
++set.seed(1)
++x <- sort(runif(60))
++dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++nsca_plot(fit)
++plot(fit)
++}
+ \seealso{
+ \code{\link[=nsca_analysis]{nsca_analysis()}}, \code{\link[=nsca_table]{nsca_table()}}
+ }
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_reference.Rd b/NSCA/man/nsca_reference.Rd
+--- a/NSCA/man/nsca_reference.Rd	2026-09-30 15:27:37.128728591 +0000
++++ b/NSCA/man/nsca_reference.Rd	2026-09-30 15:27:37.134028796 +0000
+@@ -7,35 +7,35 @@
+ nsca_reference(model, x = NULL)
+ }
+ \arguments{
+-\item{model}{An object returned by \code{\link{nsca_analysis}}.}
++\item{model}{An object returned by \code{\link[=nsca_analysis]{nsca_analysis()}}.}
+ 
+ \item{x}{Optional condition names or positions. All conditions by default.}
+ }
+ \value{
+ A data frame with one row per condition: \code{condition}, \code{outcome},
+-\code{line}, \code{line_type}, \code{observations}, \code{intercept},
+-\code{slope}, \code{r_squared} and \code{drawn}.
++\code{line}, \code{line_type}, \code{observations}, \code{intercept}, \code{slope}, \code{r_squared}
++and \code{drawn}.
+ }
+ \description{
+ Fits the ordinary least-squares regression of the outcome on each condition,
+ on the same observations both frontiers were fitted to. This is the line
+ \code{lm(y ~ x)} returns, and it is what \code{reference = "ols"} draws on
+-\code{\link{nsca_plot}}.
++\code{\link[=nsca_plot]{nsca_plot()}}.
+ }
+ \details{
+-It is reported apart from \code{\link{nsca_table}} because it is a different
+-kind of quantity. Regression describes how the expected outcome moves with the
+-condition; the two frontiers describe which condition-outcome combinations are
+-absent. Section 6.1 of the condition analysis in degree framework keeps the two
+-logics side by side rather than merging them into one number, and section 4.3
+-notes that a frontier is fixed by the most extreme observations rather than by
+-the central tendency. A reference line therefore has a slope and an intercept
+-but no empty zone, no effect size, no p value, no threshold, and no part in the
+-joint-support decision.
++It is reported apart from \code{\link[=nsca_table]{nsca_table()}} because it is a different kind of
++quantity. Regression describes how the expected outcome moves with the
++condition; the two frontiers describe which condition-outcome combinations
++are absent. Section 6.1 of the condition analysis in degree framework keeps
++the two logics side by side rather than merging them into one number, and
++section 4.3 notes that a frontier is fixed by the most extreme observations
++rather than by the central tendency. A reference line therefore has a slope
++and an intercept but no empty zone, no effect size, no p value, no
++threshold, and no part in the joint-support decision.
+ 
+ The line is computed on request, so it is available whether or not
+-\code{reference = "ols"} was set; \code{drawn} records whether it also appears
+-on the plot.
++\code{reference = "ols"} was set; \code{drawn} records whether it also appears on the
++plot.
+ }
+ \examples{
+ set.seed(1)
+@@ -45,6 +45,5 @@
+ nsca_reference(fit)
+ }
+ \seealso{
+-\code{\link{nsca_analysis}}, \code{\link{nsca_table}},
+-\code{\link{nsca_terms}}
++\code{\link[=nsca_analysis]{nsca_analysis()}}, \code{\link[=nsca_table]{nsca_table()}}, \code{\link[=nsca_terms]{nsca_terms()}}
+ }
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_results.Rd b/NSCA/man/nsca_results.Rd
+--- a/NSCA/man/nsca_results.Rd	2026-09-30 15:27:37.128771591 +0000
++++ b/NSCA/man/nsca_results.Rd	2026-09-30 15:27:37.134079982 +0000
+@@ -18,12 +18,11 @@
+ \arguments{
+ \item{model}{An object returned by \code{\link[=nsca_analysis]{nsca_analysis()}}.}
+ 
+-\item{object}{An object returned by \code{\link[=nsca_analysis]{nsca_analysis()}}.}
+-
+ \item{x}{An object returned by \code{\link[=nsca_analysis]{nsca_analysis()}}, for the print method.}
+ 
+ \item{...}{Additional arguments reserved for methods.}
+ 
++\item{object}{An object returned by \code{\link[=nsca_analysis]{nsca_analysis()}}.}
+ }
+ \value{
+ A named list containing \code{necessity}, \code{sufficiency}, and
+@@ -37,6 +36,16 @@
+ conjunction \code{max(p_nec, p_suf)} and can pass only when both component
+ screens pass.
+ }
++\examples{
++set.seed(1)
++x <- sort(runif(60))
++dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++layers <- nsca_results(fit)
++names(layers)
++fit
++summary(fit)
++}
+ \seealso{
+ \code{\link[=nsca_table]{nsca_table()}}
+ }
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_table.Rd b/NSCA/man/nsca_table.Rd
+--- a/NSCA/man/nsca_table.Rd	2026-09-30 15:27:37.128812525 +0000
++++ b/NSCA/man/nsca_table.Rd	2026-09-30 15:27:37.134147450 +0000
+@@ -11,7 +11,6 @@
+ 
+ \item{legacy}{Append the column names retired in 0.3.0 as duplicates. See
+ \code{\link[=nsca_legacy_names]{nsca_legacy_names()}}.}
+-
+ }
+ \value{
+ A data frame of joint results.
+@@ -21,6 +20,7 @@
+ the same technique, the same observations and the same scope.
+ }
+ \section{What is primary}{
++
+ The component effect sizes \code{d_nec} and \code{d_suf} are primary. Everything else
+ is a way of putting them together, and three such ways are reported rather
+ than one, because nothing in the geometry of two empty zones selects one.
+@@ -30,11 +30,10 @@
+ summary. It falls to zero as soon as either component does and stays on
+ the components' own scale, so its maximum is about 0.5 rather than 1.}
+ \item{\code{balanced_joint_effect}}{\code{2 * sqrt(d_nec * d_suf)}, normalised onto
+-\code{[0, 1]}. Partially compensatory: a larger component raises it at a
++\verb{[0, 1]}. Partially compensatory: a larger component raises it at a
+ diminishing rate, and it still collapses to zero if either component
+-does. At an equal component sum of 0.80, \code{(0.40, 0.40)} gives 0.80 and
+-\code{(0.70, 0.10)} gives 0.529. It is \emph{not} a measure of balance: \code{(0.50,
+-0.125)} and \code{(0.25, 0.25)} both score 0.50. The \code{balance} column measures
++does. At an equal component sum of 0.80, \verb{(0.40, 0.40)} gives 0.80 and
++\verb{(0.70, 0.10)} gives 0.529. It is \emph{not} a measure of balance: \verb{(0.50, 0.125)} and \verb{(0.25, 0.25)} both score 0.50. The \code{balance} column measures
+ that separately.}
+ \item{\code{joint_empty_zone_coverage}}{The share of the scope that at least
+ one claim rules out, \code{1 - admissible_region_share}. Curvature-neutral: it reaches
+@@ -47,7 +46,9 @@
+ conjunction summary because one strong component can carry it.
+ \code{\link[=nsca_joint]{nsca_joint()}} exposes the family directly.
+ }
++
+ \section{The area identity}{
++
+ The two empty spaces and the admissible region tile the scope, so by inclusion and
+ exclusion
+ 
+@@ -55,20 +56,22 @@
+ 
+ where \eqn{O} is \code{overlap_share}. Everything else follows from it rather
+ than being asserted separately. Because \code{admissible_region_share} is a share of the
+-scope it lies in \code{[0, 1]} unconditionally, and therefore so does
++scope it lies in \verb{[0, 1]} unconditionally, and therefore so does
+ \code{joint_empty_zone_coverage}. The other two indices are bounded only up to
+ the overlap:
+ 
+ \deqn{d_{nec} + d_{suf} \le 1 + O, \quad
+-\mathrm{weakest\_effect} \le 0.5 + O/2, \quad
+-\mathrm{balanced\_joint\_effect} \le 1 + O}
++      \mathrm{weakest\_effect} \le 0.5 + O/2, \quad
++      \mathrm{balanced\_joint\_effect} \le 1 + O}
+ 
+ Both bounds are tight and are attained exactly by a perfect diagonal, where
+ \code{O} is \code{1 / (n - 1)}: at \code{n = 40} the observed values are 0.5128 and 1.0256
+ against bounds of 0.5128 and 1.0256. The excess is discretization, not
+ evidence, and the indices are left unclamped so that it stays visible.
+ }
++
+ \section{Vocabulary}{
++
+ The column names follow the condition analysis in degree framework.
+ \code{relationship} states the direction as a claim about the theorised X-Y
+ relationship, as in Table 1 of that framework, not about the shape of the
+@@ -79,7 +82,9 @@
+ given condition value, or a floor, which limits how low. The two are always
+ one of each, because the two corners are diagonally opposite.
+ }
++
+ \section{The disjointness check}{
++
+ Whenever the two frontiers do not cross, the floor lies at or below the
+ ceiling throughout the scope, so no point belongs to both expected empty
+ spaces. Because each component effect size is that space's share of the same
+@@ -111,7 +116,9 @@
+ \code{geometry.max_overlap}. A row can be flagged as crossed and still have
+ acceptable geometry.
+ }
++
+ \section{Geometry diagnostics}{
++
+ \code{reconstruction_error} is the residual of the identity above. The two sides
+ come from different places: \code{admissible_region_share} and \code{overlap_share} are
+ integrated from the frontiers this package reconstructs, while \code{d_nec} and
+@@ -126,7 +133,9 @@
+ frontier overlap, allowing a step frontier the \code{1 / (n - 1)} it produces by
+ construction.
+ }
++
+ \section{Decisions}{
++
+ \code{p_nsca_iut} is \code{max(p_nec, p_suf)}, the intersection-union combination. It
+ passes only when both components reject at \code{test.p_threshold}, and it is
+ level-alpha without any assumption that the two component tests are
+@@ -150,7 +159,9 @@
+ large. \code{joint_support} additionally requires \code{geometry_acceptable}, so a
+ degenerate or badly reconstructed row cannot be reported as supported.
+ }
++
+ \section{Blind spot}{
++
+ All three joint summaries are areas over the declared scope and share one
+ blind spot. A constant outcome at the centre of an imposed scope leaves the
+ upper and lower halves both empty, so both components reach 0.5, the data
+@@ -168,6 +179,14 @@
+ depending on the sample size, the frontier technique and the scope.
+ Calibrate by simulation on the design at hand.
+ }
++
++\examples{
++set.seed(1)
++x <- sort(runif(60))
++dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++nsca_table(fit)
++}
+ \seealso{
+ \code{\link[=nsca_results]{nsca_results()}}, \code{\link[=nsca_joint]{nsca_joint()}}, \code{\link[=nsca_extract]{nsca_extract()}},
+ \code{\link[=nsca_legacy_names]{nsca_legacy_names()}}
+diff -ruN --strip-trailing-cr a/NSCA/man/nsca_thresholds.Rd b/NSCA/man/nsca_thresholds.Rd
+--- a/NSCA/man/nsca_thresholds.Rd	2026-09-30 15:27:37.128883312 +0000
++++ b/NSCA/man/nsca_thresholds.Rd	2026-09-30 15:27:37.134264331 +0000
+@@ -5,9 +5,16 @@
+ \title{Dual thresholds and the necessity-sufficiency interval}
+ \usage{
+ nsca_thresholds(
+-  model, ceiling = NULL, x = NULL, scale = NULL, outcome_scale = NULL,
+-  convention = NULL, inequality = c("strict", "inclusive"), digits = 6L,
+-  legacy = FALSE, boundary = NULL
++  model,
++  ceiling = NULL,
++  x = NULL,
++  scale = NULL,
++  outcome_scale = NULL,
++  convention = NULL,
++  inequality = c("strict", "inclusive"),
++  digits = 6L,
++  legacy = FALSE,
++  boundary = NULL
+ )
+ }
+ \arguments{
+@@ -26,13 +33,12 @@
+ in 0.4.0, which is reserved for the theoretical line an expected empty
+ space is separated by.}
+ 
+-\item{boundary}{Deprecated. Former name of \code{inequality}.}
+-
+ \item{digits}{Significant digits in the formatted text.}
+ 
+ \item{legacy}{Append the column names retired in 0.4.0 as duplicates. See
+ \code{\link[=nsca_legacy_names]{nsca_legacy_names()}}.}
+ 
++\item{boundary}{Deprecated. Former name of \code{inequality}.}
+ }
+ \value{
+ A data frame with one row per condition and outcome level.
+@@ -71,6 +77,7 @@
+ about the others. Reporting both, at several targets, is not redundant.
+ }
+ \section{The three regions}{
++
+ Necessity and sufficiency answer different questions about the same outcome
+ level, and together they cut the condition axis into three parts. For a
+ high-X direction:
+@@ -110,6 +117,14 @@
+ \code{"unattainable"}; on the sufficiency side SCAtools supplies the sufficiency
+ reading.
+ }
++
++\examples{
++set.seed(1)
++x <- sort(runif(60))
++dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++nsca_thresholds(fit)
++}
+ \seealso{
+ \code{\link[=nsca_table]{nsca_table()}}, \code{\link[=nsca_analysis]{nsca_analysis()}}, \code{\link[=nsca_legacy_names]{nsca_legacy_names()}}
+ }
