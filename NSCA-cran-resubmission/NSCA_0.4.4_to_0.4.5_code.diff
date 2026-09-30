@@ -1,0 +1,582 @@
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/DESCRIPTION b/NSCA/DESCRIPTION
+--- a/NSCA/DESCRIPTION	2026-09-30 16:17:55.503846954 +0000
++++ b/NSCA/DESCRIPTION	2026-09-30 16:17:55.507657292 +0000
+@@ -1,8 +1,8 @@
+ Package: NSCA
+ Type: Package
+ Title: Necessary and Sufficient Condition Analysis
+-Version: 0.4.4
+-Date: 2026-09-22
++Version: 0.4.5
++Date: 2026-09-30
+ Authors@R: c(
+     person("Young", "Chan", email = "youngchanresearcher@gmail.com",
+            role = c("aut", "cre"))
+@@ -39,6 +39,6 @@
+ Roxygen: list(markdown = TRUE)
+ RoxygenNote: 7.3.2
+ NeedsCompilation: no
+-Packaged: 2026-09-22 02:10:42 UTC; furfa
++Packaged: 2026-09-30 16:15:45 UTC; root
+ Author: Young Chan [aut, cre]
+ Maintainer: Young Chan <youngchanresearcher@gmail.com>
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/NEWS.md b/NSCA/NEWS.md
+--- a/NSCA/NEWS.md	2026-09-30 16:17:55.503906752 +0000
++++ b/NSCA/NEWS.md	2026-09-30 16:17:55.507752010 +0000
+@@ -1,5 +1,74 @@
++# NSCA 0.4.5
++
++## A missing condition value no longer moves that condition's scope
++
++Each condition is fitted by the engines on its own complete pairs, but the
++outcome bounds NSCA measured the admissible region against were taken from
++every observed outcome. A row with an outcome and no condition value therefore
++widened the box on one side of the identity and not on the other. On one such
++dataset `admissible_region_share` fell from 0.167 to 0.056, the area identity
++missed by 0.11, and `geometry_acceptable` -- and with it `joint_support` --
++turned `FALSE`. With two conditions the effect is not confined to edge cases:
++missing values in one condition stretched its bounds to the outcome range of
++the other, and the identity missed by 0.65. Outcome bounds are now taken per condition, from the
++same pairs and the same scope segment the engines use. Complete data is
++unaffected.
++
++## Smaller fixes
++
++- `relevance` given as a named character vector, such as
++  `c(necessity = "0.1", sufficiency = "0.2")`, stayed character, and the
++  support rule then compared effect sizes with thresholds as strings. Named
++  input is now reordered after it has been converted to numbers.
++- `shared.seed` restored the caller's random stream only when one already
++  existed. In a fresh session it left behind the stream it had created, so every
++  later draw followed from that seed. It now removes it, as documented.
++- `nsca_extract()` said every retired name had been renamed in 0.3.0; five of
++  them were renamed in 0.4.0. The warning now names the right release.
++- `nsca_extract()` refuses a frontier that was not estimated on every route.
++  The `nec:` and `suf:` routes used to return `NA` for it, which looks like a
++  missing measurement; the joint route now gives the same "was not estimated"
++  message as `nsca_thresholds()` and `nsca_plot()`.
++
++## Examples
++
++CRAN review asked that `\dontrun{}` be kept for code that genuinely cannot
++run. The one example that used it, `nsca_extract()`, relied on a `fit` it never
++created; it now builds its own model and runs unwrapped.
++
++`nsca()`, `nsca_table()`, `nsca_results()` with its `print()` and `summary()`
++methods, `nsca_thresholds()` and `nsca_plot()` with its `plot()` method had no
++examples and now have runnable ones. The `nsca()` example keeps the default
++1000 permutations, which take longer than CRAN's five-second budget, so it is
++wrapped in `\donttest{}`: it still runs under `example()` and under
++`R CMD check --as-cran`.
++
++`nsca_reference()`'s example and its list of returned columns had been added
++to the `.Rd` file by hand and were missing from the roxygen source, so the next
++`roxygen2::roxygenise()` would have dropped them. They are now in the source,
++and every help page is regenerated from it.
++
++## Documentation
++
++- The area identity in `?nsca_table` still used the name retired in 0.4.0,
++  `data_zone_share`; it now reads `admissible_region_share`.
++- `legacy` in `nsca_table()` and `nsca_thresholds()` was documented as
++  appending the names of one release each; both append those of 0.3.0 and
++  0.4.0.
++- Both READMEs installed `NSCA_0.4.3.tar.gz` and described SCAtools as a
++  source-only package. SCAtools is on CRAN, so installation is now
++  `install.packages("NSCA")`, with the source-tarball route kept below it.
++
+ # NSCA 0.4.4
+ 
++`URL`, `BugReports` and both READMEs pointed at
++`youngchanresearcher/NSCA_condition_analysis`. They now point at the package's
++repository, <https://github.com/youngchanresearcher/NSCA>. Nothing else changed;
++the entry for 0.4.3 below had been relabelled 0.4.4 in that release and is
++restored to its own version here.
++
++# NSCA 0.4.3
++
+ ## Authorship and maintainer
+ 
+ `Authors@R` named a placeholder, `NSCA Contributors <maintainer@example.org>`,
+@@ -31,8 +100,8 @@
+ `DESCRIPTION` gained `URL` and `BugReports`, and both READMEs now link the
+ repository. SCAtools is released separately, so its own link is given too:
+ 
+-    URL: https://github.com/youngchanresearcher/NSCA
+-    BugReports: https://github.com/youngchanresearcher/NSCA/issues
++    URL: https://github.com/youngchanresearcher/NSCA_condition_analysis
++    BugReports: https://github.com/youngchanresearcher/NSCA_condition_analysis/issues
+ 
+ ## The interval and the overlap now follow `scale` (breaking)
+ 
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/R/analysis.R b/NSCA/R/analysis.R
+--- a/NSCA/R/analysis.R	2026-09-30 16:17:55.503975160 +0000
++++ b/NSCA/R/analysis.R	2026-09-30 16:17:55.507883915 +0000
+@@ -92,7 +92,11 @@
+   }
+   if (!is.null(names(relevance)) && all(c("necessity", "sufficiency") %in%
+                                         names(relevance))) {
+-    values <- c(relevance[["necessity"]], relevance[["sufficiency"]])
++    # Reorder the numbers already validated above. Reading the raw input again
++    # would keep a character vector such as c(necessity = "0.1", ...) as
++    # character, and the later effect >= threshold test would then compare
++    # strings.
++    values <- values[match(c("necessity", "sufficiency"), names(relevance))]
+   }
+   stats::setNames(values, c("necessity", "sufficiency"))
+ }
+@@ -505,6 +509,14 @@
+ #' @return An object of class `nsca_result`.
+ #' @seealso [nsca_analysis()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' \donttest{
++#' # The default 1000 permutations take several seconds.
++#' nsca(dat, "X", "Y")
++#' }
+ nsca <- function(data, x, y, direction = "HH", ceilings = "ce_fdh",
+                  reference = NULL, test.rep = 1000) {
+   nsca_analysis(
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/R/geometry.R b/NSCA/R/geometry.R
+--- a/NSCA/R/geometry.R	2026-09-30 16:17:55.504042714 +0000
++++ b/NSCA/R/geometry.R	2026-09-30 16:17:55.507966854 +0000
+@@ -86,6 +86,16 @@
+ }
+ 
+ # Complete pairs only, matching what the engine fits on.
++#
++# The engines fit each condition on its own complete (x, y) pairs, so each
++# condition's outcome bounds are taken from those pairs and from its own scope
++# segment. Taking them from every observed outcome instead would widen the
++# scope whenever a row has an outcome but no condition value, and the
++# admissible region would then be measured against a different box from the
++# one d_nec and d_suf were: the area identity fails to close, and
++# geometry_acceptable, and with it joint_support, turns FALSE for no reason in
++# the data. The top-level y_bounds stays the overall range, which is what the
++# constant-outcome check needs.
+ .nsca_raw_data <- function(data, x_names, y_name, scope) {
+   frame <- as.data.frame(data)
+   y_raw <- .nsca_numeric_column(frame[[y_name]])
+@@ -100,7 +110,7 @@
+       x = x_raw[keep],
+       y = y_raw[keep],
+       x_bounds = .nsca_bounds(x_raw[keep], .nsca_scope_pair(scope, i, 0L)),
+-      y_bounds = y_bounds
++      y_bounds = .nsca_bounds(y_raw[keep], .nsca_scope_pair(scope, i, 2L))
+     )
+   }
+   list(outcome = y_raw[is.finite(y_raw)], y_bounds = y_bounds,
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/R/permutation.R b/NSCA/R/permutation.R
+--- a/NSCA/R/permutation.R	2026-09-30 16:17:55.504182392 +0000
++++ b/NSCA/R/permutation.R	2026-09-30 16:17:55.508085521 +0000
+@@ -46,6 +46,15 @@
+   if (has_seed) {
+     previous <- get(".Random.seed", envir = globalenv(), inherits = FALSE)
+     on.exit(assign(".Random.seed", previous, envir = globalenv()), add = TRUE)
++  } else {
++    # No stream existed yet. Leaving the one set.seed() creates would make every
++    # later draw in the session a function of this seed.
++    on.exit(
++      if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
++        rm(".Random.seed", envir = globalenv())
++      },
++      add = TRUE
++    )
+   }
+   set.seed(seed)
+   force(expr)
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/R/plots.R b/NSCA/R/plots.R
+--- a/NSCA/R/plots.R	2026-09-30 16:17:55.504253666 +0000
++++ b/NSCA/R/plots.R	2026-09-30 16:17:55.508234711 +0000
+@@ -213,6 +213,13 @@
+ #' @return A `ggplot` for one condition, or a named list of plots.
+ #' @seealso [nsca_analysis()], [nsca_table()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++#' nsca_plot(fit)
++#' plot(fit)
+ nsca_plot <- function(model, x = NULL, ceilings = NULL, shade = TRUE,
+                       annotate = TRUE) {
+   metadata <- .nsca_metadata(model)
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/R/results.R b/NSCA/R/results.R
+--- a/NSCA/R/results.R	2026-09-30 16:17:55.504283300 +0000
++++ b/NSCA/R/results.R	2026-09-30 16:17:55.508280279 +0000
+@@ -48,6 +48,15 @@
+   boundary = "inequality"
+ )
+ 
++# The release that retired each name, for the nsca_extract() warning.
++.nsca_legacy_since <- c(
++  d_nsca = "0.3.0", j_nsca = "0.3.0", determinacy = "0.3.0",
++  weaker_side = "0.3.0", p_nsca = "0.3.0", undetermined_share = "0.3.0",
++  undetermined_width = "0.3.0", region = "0.3.0",
++  data_zone_share = "0.4.0", data_zone_width = "0.4.0",
++  nsca_supported = "0.4.0", conjunction = "0.4.0", boundary = "0.4.0"
++)
++
+ #' Names retired in NSCA 0.3.0 and 0.4.0
+ #'
+ #' The 0.3.0 vocabulary followed the geometry rather than the interpretation:
+@@ -151,9 +160,17 @@
+ #'
+ #' @param model An object returned by [nsca_analysis()].
+ #' @param x Optional condition names or positions. All conditions by default.
+-#' @return A data frame with one row per condition.
++#' @return A data frame with one row per condition: `condition`, `outcome`,
++#'   `line`, `line_type`, `observations`, `intercept`, `slope`, `r_squared`
++#'   and `drawn`.
+ #' @seealso [nsca_analysis()], [nsca_table()], [nsca_terms()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh", reference = "ols")
++#' nsca_reference(fit)
+ nsca_reference <- function(model, x = NULL) {
+   metadata <- .nsca_metadata(model)
+   conditions <- .nsca_select_conditions(model, x)
+@@ -336,12 +353,6 @@
+   )
+ }
+ 
+-# The overlap a step frontier produces by construction, which is not a fault
+-# and must not count against the geometry. Between two consecutive
+-# observations the upper staircase still holds the earlier point's value while
+-# the lower staircase already holds the later one, so the two empty zones
+-# overlap on every tread. Summed over the n - 1 treads this is exactly
+-# 1 / (n - 1) of the scope, and it is attained by a perfect diagonal.
+ # Numerical slack for the "component effect sizes sum above one" check. Both
+ # shares are integrals over a grid, so an exactly saturating pair can land a
+ # few ulps above one; flagging that as crossed frontiers would be a false
+@@ -362,6 +373,12 @@
+   "threshold_status", "sufficiency_rule", "inequality"
+ )
+ 
++# The overlap a step frontier produces by construction, which is not a fault
++# and must not count against the geometry. Between two consecutive
++# observations the upper staircase still holds the earlier point's value while
++# the lower staircase already holds the later one, so the two empty zones
++# overlap on every tread. Summed over the n - 1 treads this is exactly
++# 1 / (n - 1) of the scope, and it is attained by a perfect diagonal.
+ .nsca_step_allowance <- function(ceiling, observations) {
+   if (!(ceiling %in% .nsca_step_ceilings)) {
+     return(0)
+@@ -408,7 +425,7 @@
+ #' The two empty spaces and the admissible region tile the scope, so by inclusion and
+ #' exclusion
+ #'
+-#' \deqn{\mathrm{data\_zone\_share} = 1 - d_{nec} - d_{suf} + O}
++#' \deqn{\mathrm{admissible\_region\_share} = 1 - d_{nec} - d_{suf} + O}
+ #'
+ #' where \eqn{O} is `overlap_share`. Everything else follows from it rather
+ #' than being asserted separately. Because `admissible_region_share` is a share of the
+@@ -526,12 +543,18 @@
+ #' Calibrate by simulation on the design at hand.
+ #'
+ #' @param model An object returned by [nsca_analysis()].
+-#' @param legacy Append the column names retired in 0.3.0 as duplicates. See
+-#'   [nsca_legacy_names()].
++#' @param legacy Append the column names retired in 0.3.0 and 0.4.0 as
++#'   duplicates. See [nsca_legacy_names()].
+ #' @return A data frame of joint results.
+ #' @seealso [nsca_results()], [nsca_joint()], [nsca_extract()],
+ #'   [nsca_legacy_names()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++#' nsca_table(fit)
+ nsca_table <- function(model, legacy = FALSE) {
+   metadata <- .nsca_metadata(model)
+   shared <- metadata$shared
+@@ -798,6 +821,15 @@
+ #'   summary object.
+ #' @seealso [nsca_table()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++#' layers <- nsca_results(fit)
++#' names(layers)
++#' fit
++#' summary(fit)
+ nsca_results <- function(model) {
+   .nsca_metadata(model)
+   list(
+@@ -819,10 +851,12 @@
+ #' @seealso [nsca_table()], [nsca_legacy_names()]
+ #' @export
+ #' @examples
+-#' \dontrun{
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
+ #' nsca_extract(fit, param = "weakest_effect")
+ #' nsca_extract(fit, param = "nec:Ceiling accuracy")
+-#' }
+ nsca_extract <- function(model, x = NULL, ceiling = NULL,
+                          param = "weakest_effect") {
+   metadata <- .nsca_metadata(model)
+@@ -835,6 +869,18 @@
+   if (is.null(ceiling)) {
+     ceiling <- metadata$ceilings[[1L]]
+   }
++  # Checked here rather than left to the table lookup, because the nec: and
++  # suf: routes read the engines directly and would otherwise return NA for a
++  # frontier that was never estimated.
++  if (length(ceiling) != 1L || !(ceiling %in% metadata$ceilings)) {
++    stop(
++      sprintf(
++        "Frontier '%s' was not estimated. Available: %s.",
++        paste(ceiling, collapse = ", "), paste(metadata$ceilings, collapse = ", ")
++      ),
++      call. = FALSE
++    )
++  }
+ 
+   if (grepl("^nec:", param)) {
+     return(.nsca_nca_param(model$necessity, x, ceiling, sub("^nec:", "", param)))
+@@ -847,8 +893,8 @@
+     replacement <- .nsca_legacy_columns[[param]]
+     warning(
+       sprintf(
+-        "'%s' was renamed to '%s' in NSCA 0.3.0. See nsca_legacy_names().",
+-        param, replacement
++        "'%s' was renamed to '%s' in NSCA %s. See nsca_legacy_names().",
++        param, replacement, .nsca_legacy_since[[param]]
+       ),
+       call. = FALSE
+     )
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/R/thresholds.R b/NSCA/R/thresholds.R
+--- a/NSCA/R/thresholds.R	2026-09-30 16:17:55.504328352 +0000
++++ b/NSCA/R/thresholds.R	2026-09-30 16:17:55.508412899 +0000
+@@ -138,11 +138,17 @@
+ #'   space is separated by.
+ #' @param boundary Deprecated. Former name of `inequality`.
+ #' @param digits Significant digits in the formatted text.
+-#' @param legacy Append the column names retired in 0.4.0 as duplicates. See
+-#'   [nsca_legacy_names()].
++#' @param legacy Append the column names retired in 0.3.0 and 0.4.0 as
++#'   duplicates. See [nsca_legacy_names()].
+ #' @return A data frame with one row per condition and outcome level.
+ #' @seealso [nsca_table()], [nsca_analysis()], [nsca_legacy_names()]
+ #' @export
++#' @examples
++#' set.seed(1)
++#' x <- sort(runif(60))
++#' dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(60, 0, 0.1), 0), 1))
++#' fit <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh")
++#' nsca_thresholds(fit)
+ nsca_thresholds <- function(
+     model,
+     ceiling = NULL,
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/README.md b/NSCA/README.md
+--- a/NSCA/README.md	2026-09-30 16:17:55.504389199 +0000
++++ b/NSCA/README.md	2026-09-30 16:17:55.507801721 +0000
+@@ -8,17 +8,24 @@
+ 
+ ## Installation
+ 
+-NSCA delegates necessity to NCA and sufficiency to SCAtools, so install those
+-first. SCAtools is a source package and must be in place before NSCA, and it
+-lives in its own repository:
+-<https://github.com/youngchanresearcher/SCAtools>
++NSCA delegates necessity to NCA and sufficiency to SCAtools. All three are on
++CRAN, and installing NSCA from CRAN brings the other two with it:
+ 
+ ```r
+-install.packages(c("NCA", "ggplot2"))
+-install.packages("SCAtools_0.4.3.tar.gz", repos = NULL, type = "source")
+-install.packages("NSCA_0.4.3.tar.gz",     repos = NULL, type = "source")
++install.packages("NSCA")
+ ```
+ 
++To install from a source tarball instead, put the dependencies in place first,
++because `repos = NULL` does not resolve them:
++
++```r
++install.packages(c("NCA", "SCAtools", "ggplot2"))
++install.packages("NSCA_0.4.5.tar.gz", repos = NULL, type = "source")
++```
++
++SCAtools lives in its own repository:
++<https://github.com/youngchanresearcher/SCAtools>
++
+ Requires R (>= 3.5.0), NCA (>= 5.0.2) and SCAtools (>= 0.4.1).
+ 
+ ## What it estimates
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/inst/docs/README_zh-TW.md b/NSCA/inst/docs/README_zh-TW.md
+--- a/NSCA/inst/docs/README_zh-TW.md	2026-09-30 16:17:55.504517421 +0000
++++ b/NSCA/inst/docs/README_zh-TW.md	2026-09-30 16:17:55.508610750 +0000
+@@ -6,16 +6,22 @@
+ 
+ 原始碼與問題回報：<https://github.com/youngchanresearcher/NSCA>
+ 
+-NSCA 的必要性由 NCA 計算、充分性由 SCAtools 計算,所以要先裝這兩個。SCAtools 是
+-原始碼套件,必須在 NSCA 之前裝好,它有自己的 repository：
+-<https://github.com/youngchanresearcher/SCAtools>
++NSCA 的必要性由 NCA 計算、充分性由 SCAtools 計算。三者都在 CRAN 上,從 CRAN 安裝
++NSCA 會一併裝好另外兩個：
+ 
+ ```r
+-install.packages(c("NCA", "ggplot2"))
+-install.packages("SCAtools_0.4.3.tar.gz", repos = NULL, type = "source")
+-install.packages("NSCA_0.4.3.tar.gz",     repos = NULL, type = "source")
++install.packages("NSCA")
+ ```
+ 
++若要從原始碼 tarball 安裝,必須先裝好相依套件,因為 `repos = NULL` 不會自動處理相依：
++
++```r
++install.packages(c("NCA", "SCAtools", "ggplot2"))
++install.packages("NSCA_0.4.5.tar.gz", repos = NULL, type = "source")
++```
++
++SCAtools 有自己的 repository：<https://github.com/youngchanresearcher/SCAtools>
++
+ 需要 R (>= 3.5.0)、NCA (>= 5.0.2) 與 SCAtools (>= 0.4.1)。
+ 
+ ## 它在估計什麼
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/tests/testthat/test-corners.R b/NSCA/tests/testthat/test-corners.R
+--- a/NSCA/tests/testthat/test-corners.R	2026-09-30 16:17:55.505420162 +0000
++++ b/NSCA/tests/testthat/test-corners.R	2026-09-30 16:17:55.509775097 +0000
+@@ -113,7 +113,7 @@
+   expect_equal(unname(legacy[["region"]]), "threshold_status")
+ 
+   # The map is the documented one, exactly. NEWS, both READMEs and the package
+-  # guide all print this table, and `region` was missing from the code until
++  # guide all print this table, and `region` was missing from the code through
+   # 0.4.3 without any of them noticing, so pin the whole set rather than a
+   # sample of it.
+   expect_setequal(
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/tests/testthat/test-extract.R b/NSCA/tests/testthat/test-extract.R
+--- a/NSCA/tests/testthat/test-extract.R	2026-09-30 16:17:55.505497797 +0000
++++ b/NSCA/tests/testthat/test-extract.R	2026-09-30 16:17:55.509851853 +0000
+@@ -67,8 +67,13 @@
+   expect_error(nsca_extract(fit, param = "d_total"), "Unknown parameter")
+   expect_error(nsca_extract(fit, param = "d_total"), "nec:")
+   expect_error(nsca_extract(fit, x = "X9"), "Unknown condition")
+-  expect_error(nsca_extract(fit, ceiling = "cr_fdh"),
+-               "No result for condition")
++  expect_error(nsca_extract(fit, ceiling = "cr_fdh"), "was not estimated")
++  # The engine routes are guarded too: before 0.4.5 they returned NA for a
++  # frontier that was never estimated.
++  expect_error(nsca_extract(fit, ceiling = "cr_fdh", param = "nec:Effect size"),
++               "was not estimated")
++  expect_error(nsca_extract(fit, ceiling = "cr_fdh", param = "suf:Effect size"),
++               "was not estimated")
+ })
+ 
+ test_that("an engine parameter the engine does not know returns NA, not junk", {
+@@ -94,3 +99,15 @@
+     )
+   }
+ })
++
++test_that("a retired name warns with the release that retired it", {
++  fit <- nsca_analysis(extract_data(), "X1", "Y", ceilings = "ce_fdh")
++  expect_warning(nsca_extract(fit, param = "d_nsca"), "in NSCA 0\\.3\\.0")
++  expect_warning(nsca_extract(fit, param = "data_zone_share"),
++                 "in NSCA 0\\.4\\.0")
++  expect_warning(nsca_extract(fit, param = "nsca_supported"),
++                 "in NSCA 0\\.4\\.0")
++  # Every retired name has a release on record, and nothing else does.
++  expect_setequal(names(NSCA:::.nsca_legacy_since),
++                  names(nsca_legacy_names()))
++})
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/tests/testthat/test-geometry.R b/NSCA/tests/testthat/test-geometry.R
+--- a/NSCA/tests/testthat/test-geometry.R	2026-09-30 16:17:55.505531580 +0000
++++ b/NSCA/tests/testthat/test-geometry.R	2026-09-30 16:17:55.509886621 +0000
+@@ -57,3 +57,34 @@
+   band <- NSCA:::.nsca_band(grid, grid, grid, c(0, 1))
+   expect_equal(band$area, 0, tolerance = 1e-9)
+ })
++
++test_that("rows without a condition value do not widen that condition's scope", {
++  # The engines fit each condition on its own complete pairs. An outcome
++  # observed only where the condition is missing must not stretch the box the
++  # admissible region is measured in, or the area identity fails to close and
++  # joint support is refused for no reason in the data.
++  set.seed(2)
++  n <- 50
++  x <- runif(n)
++  y <- pmin(pmax(x + rnorm(n, 0, 0.1), 0), 1)
++  base <- data.frame(X1 = x, X2 = runif(n), Y = y)
++  padded <- rbind(base, data.frame(X1 = 0.5, X2 = NA, Y = c(-1, 2)))
++
++  single <- nsca_table(nsca_analysis(
++    rbind(data.frame(X = x, Y = y), data.frame(X = NA, Y = c(-1, 2))),
++    "X", "Y", ceilings = "ce_fdh"
++  ))
++  clean <- nsca_table(nsca_analysis(data.frame(X = x, Y = y), "X", "Y",
++                                    ceilings = "ce_fdh"))
++  expect_equal(single$admissible_region_share, clean$admissible_region_share)
++  expect_lt(single$reconstruction_error, 0.02)
++  expect_true(single$geometry_acceptable)
++
++  both <- nsca_table(nsca_analysis(padded, c("X1", "X2"), "Y",
++                                   ceilings = "ce_fdh"))
++  alone <- nsca_table(nsca_analysis(base[c("X2", "Y")], "X2", "Y",
++                                    ceilings = "ce_fdh"))
++  expect_equal(both$admissible_region_share[both$condition == "X2"],
++               alone$admissible_region_share)
++  expect_true(all(both$reconstruction_error < 0.02))
++})
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/tests/testthat/test-shared.R b/NSCA/tests/testthat/test-shared.R
+--- a/NSCA/tests/testthat/test-shared.R	2026-09-30 16:17:55.505721531 +0000
++++ b/NSCA/tests/testthat/test-shared.R	2026-09-30 16:17:55.510130229 +0000
+@@ -183,3 +183,17 @@
+   expect_gt(weakest("X1"), weakest("X2"))
+   expect_lt(weakest("X2"), 0.15)
+ })
++
++test_that("a seed leaves no random stream behind when there was none", {
++  # Built first: shared_data() sets a seed of its own.
++  dat <- shared_data()
++  had <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
++  if (had) {
++    saved <- get(".Random.seed", envir = globalenv(), inherits = FALSE)
++    on.exit(assign(".Random.seed", saved, envir = globalenv()), add = TRUE)
++    rm(".Random.seed", envir = globalenv())
++  }
++  nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh",
++                shared.test.rep = 3, shared.seed = 1)
++  expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE))
++})
+diff -ruN --strip-trailing-cr '--exclude=man' a/NSCA/tests/testthat/test-validation.R b/NSCA/tests/testthat/test-validation.R
+--- a/NSCA/tests/testthat/test-validation.R	2026-09-30 16:17:55.505795777 +0000
++++ b/NSCA/tests/testthat/test-validation.R	2026-09-30 16:17:55.510343225 +0000
+@@ -164,3 +164,20 @@
+     "nsca_reference"
+   )
+ })
++
++test_that("a named relevance is reordered as numbers, whatever its type", {
++  set.seed(3)
++  x <- sort(runif(40))
++  dat <- data.frame(X = x, Y = pmin(pmax(x + rnorm(40, 0, 0.1), 0), 1))
++  reversed <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh",
++                            relevance = c(sufficiency = 0.2, necessity = 0.1))
++  expect_identical(attr(reversed, "nsca")$relevance,
++                   c(necessity = 0.1, sufficiency = 0.2))
++  # Before 0.4.5 a character input survived as character, and the support
++  # rule then compared effect sizes with thresholds as strings.
++  text <- nsca_analysis(dat, "X", "Y", ceilings = "ce_fdh",
++                        relevance = c(necessity = "0.1", sufficiency = "0.2"))
++  expect_type(attr(text, "nsca")$relevance, "double")
++  expect_identical(attr(text, "nsca")$relevance,
++                   c(necessity = 0.1, sufficiency = 0.2))
++})

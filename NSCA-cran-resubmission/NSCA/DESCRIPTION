@@ -1,0 +1,44 @@
+Package: NSCA
+Type: Package
+Title: Necessary and Sufficient Condition Analysis
+Version: 0.4.5
+Date: 2026-09-30
+Authors@R: c(
+    person("Young", "Chan", email = "youngchanresearcher@gmail.com",
+           role = c("aut", "cre"))
+    )
+Description: Tests and quantifies bivariate statements in which a condition is
+    both necessary and sufficient for an outcome. Necessity and sufficiency are
+    estimated as two empty-space frontiers on diagonally opposite corners of
+    the same scatter plot, using the 'NCA' package of Dul (2016)
+    <doi:10.1177/1094428115584005> for the necessity side and 'SCAtools' for
+    the sufficiency side. The two empty zones and the region between them tile
+    the analytic scope, which yields the reported areas as one identity rather
+    than as separate definitions: a weakest-component effect, a normalised
+    geometric mean of the two components, the share of the scope the claims
+    jointly rule out, and the data zone they still admit. The conjunction is
+    decided by an intersection-union combination of the two directional
+    permutation tests, optionally driven by a single shared permutation
+    sequence so that a statistic of both components can also be tested. These
+    are random-pairing screens rather than direct tests of a causal
+    necessary-and-sufficient relation, no magnitude benchmarks are asserted
+    for the joint indices, and a dual-threshold table separates outcome levels
+    that are out of reach, admitted, or guaranteed. An ordinary least-squares
+    line can be drawn alongside the two frontiers as a central-tendency
+    reference; it is an average-effect summary and is never treated as a
+    component of either claim.
+License: GPL (>= 3)
+Encoding: UTF-8
+Depends: R (>= 3.5.0)
+Imports: ggplot2 (>= 3.4.0), NCA (>= 5.0.2), SCAtools (>= 0.4.1),
+        stats, utils
+Suggests: testthat (>= 3.0.0)
+Config/testthat/edition: 3
+URL: https://github.com/youngchanresearcher/NSCA
+BugReports: https://github.com/youngchanresearcher/NSCA/issues
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+NeedsCompilation: no
+Packaged: 2026-09-30 16:15:45 UTC; root
+Author: Young Chan [aut, cre]
+Maintainer: Young Chan <youngchanresearcher@gmail.com>

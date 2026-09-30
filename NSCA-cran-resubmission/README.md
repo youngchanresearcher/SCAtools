@@ -1,117 +1,145 @@
-# NSCA 0.4.4 — CRAN 重新提交說明
+# NSCA 0.4.5 — CRAN 重新提交
 
-## 發生了甚麼事
+## 檔案
 
-NSCA 0.4.4 是首次投稿 CRAN（CRAN 上目前沒有 NSCA）。投稿後的流程是：
+| 檔案 | 內容 |
+| --- | --- |
+| `NSCA_0.4.5.tar.gz` | 要上傳到 CRAN 的套件 |
+| `NSCA/` | tarball 解開後的完整原始碼，可直接在 GitHub 上逐檔瀏覽 |
+| `NSCA_0.4.4_to_0.4.5_code.diff` | **審閱用**：與你上傳的 0.4.4 相比的程式碼差異（不含 `man/`），約 300 行 |
+| `NSCA_0.4.4_to_0.4.5.diff` | 完整差異，含 roxygen 重新產生的 `man/*.Rd` |
 
-1. **自動檢查**：CRAN 在 Windows 與 Debian 上跑 `R CMD check --as-cran`。這一關已經過了，
-   否則不會進入下一步。
-2. **人工審查**：CRAN 志工逐項看 DESCRIPTION、`.Rd` 說明檔、範例等是否符合
-   [CRAN Cookbook](https://contributor.r-project.org/cran-cookbook/)。這次的退件信就來自這一步。
+## 背景：CRAN 為甚麼退件
 
-退件信只指出一件事：**`\dontrun{}` 的使用方式**。
+NSCA 是首次投稿。CRAN 的自動檢查已經通過，退件來自人工審查，理由只有一個：
+`nsca_extract()` 的範例被包在 `\dontrun{}` 裡。
 
-### `\dontrun{}`、`\donttest{}`、不包裹，三者的差別
-
-| 寫法 | `example()` 使用者執行時 | `R CMD check` | CRAN 的使用時機 |
+| 寫法 | `example()` 時 | `R CMD check --as-cran` 時 | CRAN 允許的情況 |
 | --- | --- | --- | --- |
-| 不包裹 | 執行 | 執行 | 預設，執行時間 < 5 秒 |
-| `\donttest{}` | 執行 | `--as-cran` 時**也會執行** | 能跑但太慢（> 5 秒） |
-| `\dontrun{}` | **不執行**，印出 `## Not run:` | 不執行 | 真的無法執行（缺外部軟體、API key 等） |
+| 不包裹 | 執行 | 執行，且計時（上限 5 秒） | 預設 |
+| `\donttest{}` | 執行 | 另外跑一輪，不計入 5 秒上限 | 能跑但太慢 |
+| `\dontrun{}` | 不執行，印出 `## Not run:` | 不執行 | 真的無法執行（缺軟體、API key 等） |
 
-`\dontrun{}` 等於告訴使用者「這段程式碼不能跑」，所以 CRAN 只允許在真的不能跑時使用。
+那段範例用了一個從未建立的 `fit`，所以才被包起來。實際上只要先建立 `fit` 就能在 0.1 秒內跑完。
 
-### NSCA 的問題在哪裡
+## 0.4.5 的修改
 
-問題出在 `nsca_extract()` 的範例：
+### 1. 範例（回應退件信）
 
-```r
-\dontrun{
-nsca_extract(fit, param = "weakest_effect")
-nsca_extract(fit, param = "nec:Ceiling accuracy")
-}
+- `nsca_extract()`：拿掉 `\dontrun{}`，先建立 `fit` 再示範。
+- `nsca()`、`nsca_plot()`、`nsca_results()`（含 `print`／`summary`）、`nsca_table()`、`nsca_thresholds()`
+  原本沒有範例，現在都有，而且都不包裹。
+- `nsca()` 保留預設的 **1000 次**置換檢定。它約需 11–15 秒，超過 5 秒上限，因此放在 `\donttest{}` 裡。
+  這正是 CRAN 指定的用法：使用者執行 `example(nsca)` 時照樣會跑，CRAN 的 `--as-cran` 檢查也會另外跑一輪，但不計入 5 秒上限。
+- `nsca_reference()` 的範例原本是手動寫在 `.Rd` 裡的，roxygen 原始碼中沒有。現已補回原始碼，
+  否則下次執行 `roxygenise()` 範例就會消失。
+
+### 2. 全面檢查後發現並修正的 bug
+
+每個 bug 都加了回歸測試。這些測試在原本的 0.4.4 上會失敗，在 0.4.5 上會通過。
+
+**(a) 條件變數有缺失值時，容許區面積算錯（嚴重）**
+
+NCA／SCAtools 以每個條件自己的完整配對 (x, y) 來配適；NSCA 卻用**所有**觀測到的 y 來決定結果變數的範圍。
+只要某一列有 Y、沒有 X，NSCA 量容許區的框就比引擎量 `d_nec`／`d_suf` 的框大。
+
+| 情境 | `admissible_region_share` | `reconstruction_error` | `geometry_acceptable` |
+| --- | --- | --- | --- |
+| 單一條件，完整資料 | 0.167 | 0.00005 | TRUE |
+| 同上，多兩列 X 缺失、Y 在範圍外 | **0.056** | **0.110** | **FALSE** |
+| 兩個條件，X2 有缺失 | — | **0.648**（X2） | **FALSE** |
+
+`geometry_acceptable` 變成 FALSE 後，`joint_support` 也會被判為 FALSE，但原因不在資料本身。
+修正後，每個條件的 Y 範圍改由它自己的完整配對和 scope 決定，與引擎一致。
+
+完整資料不受影響：在 48 種設定（4 個方向 × 有無 scope × 6 組資料，每組 2 個條件、4 種前沿技術）下，
+0.4.4 與 0.4.5 的 `nsca_table()` 和 `nsca_thresholds()` 輸出**完全相同**（`identical() == TRUE`）。
+
+**(b) `relevance` 以具名字串給定時，用字串比大小**
+
+`relevance = c(necessity = "0.1", sufficiency = "0.2")` 會保留為字串，後面的
+`d_nec >= threshold` 因而變成字串比較。現在一律先轉成數字再依名稱排序。
+
+**(c) `shared.seed` 在新的 R session 裡留下亂數狀態**
+
+說明文件寫「會還原使用者的亂數流」，但只有在原本就有亂數狀態時才會還原。
+若 session 從未抽過亂數，函式結束後會留下由 `shared.seed` 產生的狀態，之後所有亂數都由它決定。現已修正。
+
+**(d) `nsca_extract()` 的警告寫錯版本**
+
+所有舊名稱都被說成「在 0.3.0 改名」，但其中 5 個（`data_zone_share`、`data_zone_width`、
+`nsca_supported`、`conjunction`、`boundary`）是 0.4.0 改的。
+
+**(e) `nsca_extract()` 對不存在的前沿技術回傳 NA**
+
+用 `nec:`／`suf:` 前綴時，指定一個沒估計過的 `ceiling` 會靜默回傳 `NA`，看起來像一個缺失的測量值。
+現在所有路徑都會報錯 "was not estimated"，與 `nsca_thresholds()`、`nsca_plot()` 一致。
+
+### 3. 文件修正
+
+- `?nsca_table` 的面積恆等式仍使用 0.4.0 已淘汰的名稱 `data_zone_share`，已改為 `admissible_region_share`。
+- `nsca_table()`、`nsca_thresholds()` 的 `legacy` 參數各只寫了一個版本，實際上兩者都會附上 0.3.0 與 0.4.0 的舊名稱。
+- 兩份 README 的安裝說明叫使用者裝 `NSCA_0.4.3.tar.gz`，並說 SCAtools 只有原始碼版。
+  SCAtools 0.4.3 已在 CRAN 上，現改為 `install.packages("NSCA")`，並保留從 tarball 安裝的方式。
+- NEWS：0.4.4 發佈時把 0.4.3 的段落標題改成了 0.4.4，所以 0.4.3 從歷史中消失了，
+  而 0.4.4 唯一的實際變更（repository 網址）也沒有被記錄。現已還原 0.4.3 段落（與 0.4.3 tarball 內容逐字相同），並為 0.4.4 補上一段說明。
+- 一段說明 step frontier 重疊的註解放錯位置，已移到它描述的函式上方。
+
+### 4. 版本
+
+`Version: 0.4.5`、`Date: 2026-09-30`。
+
+## 檢查過、沒有問題的項目
+
+- 13 個說明頁都有 `\value` 和可執行的範例。
+- `print()`／`cat()` 只出現在 print／plot 方法裡。
+- 沒有寫檔，沒有更改 `options()`／`par()`／工作目錄，沒有使用 `T`／`F`。
+- `NCA_SKIP_PURITY` 確實是 NCA 讀取的環境變數，而且用 `on.exit()` 還原。
+- 用到的 SCAtools 函式（`sca_analysis`、`sca_thresholds`、`sca_rescale`、`sca_scales`、`sca_table`、
+  `sca_extract`）在 0.4.1 都已存在，`SCAtools (>= 0.4.1)` 的下限正確；SCAtools 0.4.2、0.4.3 沒有改變行為。
+- DESCRIPTION 拼字：hunspell 只標出 `Dul`（作者姓）、`bivariate`、`normalised`（英式拼法），都是正確的。
+- `inst/examples/` 裡的兩支腳本都能完整執行。
+
+## 驗證
+
+R 4.3.3（Ubuntu 24.04），依 CRAN 方式執行 `R CMD check --as-cran`：
+
 ```
-
-這段之所以被包進 `\dontrun{}`，是因為 `fit` 從來沒有被建立，直接執行會出錯。
-但只要先建立 `fit`，整段不到 0.1 秒就能跑完，所以應該直接拿掉包裹，而不是改成 `\donttest{}`。
-
-## 修改內容
-
-所有修改都在 roxygen 原始碼（`R/*.R`）裡完成，再用 roxygen2 7.3.2（與 DESCRIPTION 的
-`RoxygenNote` 相同）重新產生 `man/*.Rd`。完整差異見 `NSCA_0.4.4-examples.diff`。
-
-### 1. 退件信指出的問題
-
-- **`nsca_extract()`**：移除 `\dontrun{}`，範例改為先用 `nsca_analysis()` 建立 `fit`，
-  再示範兩種取值方式。
-
-### 2. 全面檢查後一併修正的問題
-
-逐一檢查所有匯出函式後，發現以下三個問題。它們不在這次的退件信裡，但很可能在下一輪審查被提出，所以一起修正：
-
-- **5 個說明頁沒有 `\examples`**：`nsca()`、`nsca_plot()`（含 `plot()` 方法）、
-  `nsca_results()`（含 `print()`／`summary()` 方法）、`nsca_table()`、`nsca_thresholds()`。
-  CRAN 審查常見的要求是「每個匯出函式都要有可執行的小範例」，這次一併補上，全部不包裹。
-- **`nsca()` 的範例時間**：`nsca()` 預設 `test.rep = 1000`，實測約 11.5 秒，超過 5 秒上限。
-  範例改用 `test.rep = 50`（並加註實際使用請保留預設 1000），約 2.6 秒（其中約 2 秒是第一次載入
-  NCA／SCAtools 的固定成本）。
-- **`man/nsca_reference.Rd` 與原始碼不同步**：原本的 `.Rd` 被手動加上了 `\examples` 和
-  更完整的 `\value`，但 `R/results.R` 的 roxygen 區塊裡沒有。只要再執行一次
-  `roxygen2::roxygenise()`，這個範例就會消失。現已補回原始碼。
-  （其他 `.Rd` 也都有手動改過的痕跡，但差異只在排版，例如 `\usage` 的換行，重新產生後內容不變。）
-
-### 3. 其他
-
-- `DESCRIPTION` 的 `Date` 更新為 2026-09-30。版本號維持 0.4.4：NSCA 尚未上架 CRAN，
-  被退件後重新提交可以沿用同一版號。
-- `NEWS.md` 的 0.4.4 節新增一段說明以上修改。
-
-## 檢查過、確認沒問題的項目
-
-- `\value`：13 個 `.Rd` 全部都有。
-- `print()`／`cat()` 只出現在 `print`／`plot` 方法裡，一般函式沒有直接輸出到主控台。
-- `Sys.setenv(NCA_SKIP_PURITY)` 有用 `on.exit()` 還原；`shared.seed` 會保存並還原使用者的
-  `.Random.seed`。
-- 沒有寫檔、沒有改 `options()`／`par()`／工作目錄，也沒有用 `T`／`F` 代替 `TRUE`／`FALSE`。
-- DESCRIPTION：軟體名稱加了單引號（'NCA'、'SCAtools'），DOI 格式正確，URL 可連線。
-- 相依套件 NCA 5.0.2 與 SCAtools 0.4.3 都已在 CRAN 上。
-
-## 驗證結果
-
-在 R 4.3.3（Ubuntu 24.04）執行 `R CMD check --as-cran --run-donttest`：
-
-```
-Status: 1 NOTE
+* checking examples ... OK
+* checking examples with --run-donttest ... [19s/19s] OK
+* checking tests ... [55s/55s] OK
+* checking PDF version of manual ... OK
 * checking HTML version of manual ... NOTE
 Skipping checking math rendering: package 'V8' unavailable
+
+Status: 1 NOTE
 ```
 
-唯一的 NOTE 是檢查環境沒有安裝 `V8` 套件，與 NSCA 本身無關。測試：1083 個全數通過（約 55 秒）。
+唯一的 NOTE 是檢查用的機器沒有安裝 `V8` 套件，與 NSCA 無關。測試：1098 個全部通過。
 
-各範例執行時間（秒）：
-
-| 範例 | elapsed |
-| --- | --- |
-| nsca | 2.64 |
-| nsca_plot | 0.66 |
-| nsca_results | 0.08 |
-| 其他 | < 0.05 |
+各範例執行時間（計時那一輪，秒）：`nsca_plot` 0.66，其他都低於 0.1。
 
 ## 重新提交
 
-`NSCA_0.4.4.tar.gz` 可以直接上傳到 <https://cran.r-project.org/submit.html>。
-如果想在自己的電腦上重新 build，請把 diff 套用到原始碼後執行 `R CMD build`。
-
-CRAN 表單的 "Optional comment" 欄位可以貼上：
+上傳 `NSCA_0.4.5.tar.gz` 到 <https://cran.r-project.org/submit.html>。
+"Optional comment" 欄位可貼上：
 
 ```
 This is a resubmission. In this version I have:
 
 * Removed \dontrun{} from the nsca_extract() example. It was only there
   because the example used an object it never created; the example now
-  builds that object and runs in well under a second.
+  builds that object and runs unwrapped.
 
-* Added small executable examples to every exported function that lacked
-  one (nsca(), nsca_plot(), nsca_results(), nsca_table(),
-  nsca_thresholds()). None is wrapped; all run in under 5 seconds.
+* Added executable examples to every exported function that lacked one.
+  All run unwrapped in under 1 second, except nsca(), whose default of
+  1000 permutations takes more than 5 seconds and is therefore wrapped
+  in \donttest{}.
+
+* Fixed several bugs found while reviewing the package (see NEWS.md) and
+  increased the version to 0.4.5.
+
+The words flagged as possibly misspelled in DESCRIPTION are correct:
+'Dul' is an author's surname, and 'bivariate' and 'normalised' are
+standard (British) spellings.
 ```
