@@ -70,6 +70,7 @@ Chan, Y. (2026). *SCAtools: Direction-aware sufficient condition analysis* [R pa
 ## Contact
 
 Young Chan, University of Leeds
+Email: youngchanresearcher@gmail.com
 ORCID: [0000-0003-4859-4218](https://orcid.org/0000-0003-4859-4218)
 
 Questions and bug reports: [GitHub issues](https://github.com/youngchanresearcher/SCAtools/issues)
